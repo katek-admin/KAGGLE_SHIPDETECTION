@@ -1,8 +1,7 @@
 import tensorflow as tf
-from keras import layers, optimizers
-from keras import backend
+from keras import layers
 
-from config import TARGET_IMAGE_HEIGHT, TARGET_IMAGE_WIDTH
+import config
 
 data_augmentation = tf.keras.Sequential([
         layers.RandomFlip(mode="horizontal", seed=42),
@@ -66,27 +65,4 @@ def unet_model(input_shape):
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-
-def dice_coefficient(y_true, y_pred):
-    smooth = 10e-6
-    y_true_flat = backend.flatten(y_true)
-    y_pred_flat = backend.flatten(y_pred)
-    intersection = backend.sum(y_true_flat * y_pred_flat)
-    return (2. * intersection + smooth) / (backend.sum(y_true_flat) + backend.sum(y_pred_flat) + smooth)
-
-def dice_loss(y_true, y_pred):
-    return 1 - dice_coefficient(y_true, y_pred)
-
-def combined_loss(y_true, y_pred):
-    dice = dice_loss(y_true, y_pred)
-    bce_loss = tf.keras.losses.BinaryCrossentropy()
-    bce = bce_loss(y_true, y_pred)
-    return dice + bce
-
-model = unet_model((TARGET_IMAGE_HEIGHT, TARGET_IMAGE_WIDTH,3))
-model.compile(optimizer=optimizers.Adam(learning_rate=0.0001, epsilon=1e-06), loss=combined_loss, metrics=[dice_coefficient])
-
-
-# TODO: delete
-model.summary()
-
+model = unet_model((config.TARGET_IMAGE_HEIGHT, config.TARGET_IMAGE_WIDTH,3))

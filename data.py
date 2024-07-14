@@ -2,17 +2,16 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import os, json
+import os
 
 from utils import rle_decode
 
 import config
 
-images_file = os.getcwd()+'/inputdata/train_images.npy'
-masks_file = os.getcwd()+'/inputdata/masks_images.npy'
+images_file = os.getcwd() + config.images_file
+masks_file = os.getcwd()+ config.masks_file
 
-test_images_file = os.getcwd()+'/inputdata/test_images.npy'
+test_images_file = os.getcwd()+ config.test_images_file
 
 
 
@@ -41,22 +40,30 @@ def load_and_preprocess_image(img_path, target_size=(config.TARGET_IMAGE_HEIGHT,
     img = tf.image.resize(img, target_size, method = 'nearest')
     return img
 
+# Common function to load both image and mask (set amount of images = config -> IMAGES_TOINCLUDE)
 def load_data():
     images = []
     masks = []
 
+    #if images have been already preproccessed, load the file
     if os.path.exists(images_file):
         images = np.load(images_file)
-    
+        
+    #if masks have been already preproccessed, load the file
     if os.path.exists(masks_file):
         masks = np.load(masks_file)
 
+    #if any of those files are empty, perform preprocessing
     if len(images)==0 or len(masks)==0:
+
+        #adding masks in proportion as 80% with masks, 20% - empty masks
         masks_df = pd.read_csv(os.getcwd()+config.MASK_CSV_PATH)
+        masks_df_notna=masks_df[masks_df['EncodedPixels'].notna()][:int(config.IMAGES_TOINCLUDE*0.8)]
+        masks_df_na=masks_df[masks_df['EncodedPixels'].isna()][:int(config.IMAGES_TOINCLUDE*0.2)]
+        combined_df = pd.concat([masks_df_notna, masks_df_na], ignore_index=True)
+        masks_df = combined_df.sample(frac=1).reset_index(drop=True)
 
         for index, row in masks_df.iterrows():
-            if index==config.IMAGES_TOINCLUDE:
-                break
             img_file = os.path.join(config.TRAIN_IMAGES_PATH, row['ImageId'])
             if os.path.exists(img_file):
                 img = load_and_preprocess_image(img_file)
@@ -72,9 +79,33 @@ def load_data():
         np.save(images_file, images)
         np.save(masks_file, masks)
 
-    return images, masks
+    # Split the data
+    X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=config.VALIDATION_SPLIT, random_state=42)
 
-# Example data loading function
+    X_train = tf.data.Dataset.from_tensor_slices(X_train)
+    y_train = tf.data.Dataset.from_tensor_slices(y_train)
+
+    X_val = tf.data.Dataset.from_tensor_slices(X_val)
+    y_val = tf.data.Dataset.from_tensor_slices(y_val)
+
+
+
+    # Add labels to dataframe objects (one-hot-encoded)
+    train_dataset = tf.data.Dataset.zip((X_train, y_train))
+    val_dataset = tf.data.Dataset.zip((X_val, y_val))
+
+    # Apply the batch size to the dataset
+    batched_train_dataset = train_dataset.batch(config.BATCH_SIZE)
+    batched_val_dataset = val_dataset.batch(config.BATCH_SIZE)
+
+    # Adding autotune for pre-fetching
+    AUTOTUNE = tf.data.experimental.AUTOTUNE
+    batched_train_dataset = batched_train_dataset.prefetch(buffer_size=AUTOTUNE)
+    batched_val_dataset = batched_val_dataset.prefetch(buffer_size=AUTOTUNE)
+
+    return batched_train_dataset, batched_val_dataset
+
+# Test data loading function
 def load_test_data():
     test_images = []
 
@@ -83,75 +114,30 @@ def load_test_data():
     
    
     if len(test_images)==0:
-        index=0
-        #for _, _, filenames in os.walk(config.TEST_IMAGES_PATH):
+    
         filenames = os.listdir(config.TEST_IMAGES_PATH)
+        filenames = filenames[:config.IMAGES_TOINCLUDE_TEST]
                               
         for filename in filenames:
-            if index==10:
-                break
-
-            print(os.path.join(filename))
             img_file = os.path.join(config.TEST_IMAGES_PATH, filename)
             img = load_and_preprocess_image(img_file)
             test_images.append(img)
-            index+=1
 
         # Convert lists to numpy arrays
         test_images = np.array(test_images)
         np.save(test_images_file, test_images)
+    
+    X_test = tf.data.Dataset.from_tensor_slices(test_images)
+    batched_test_dataset = X_test.batch(config.BATCH_SIZE)
+    # Adding autotune for pre-fetching
+    AUTOTUNE = tf.data.experimental.AUTOTUNE
+    batched_test_dataset = batched_test_dataset.prefetch(buffer_size=AUTOTUNE)
 
-    return test_images
+    return batched_test_dataset
+
+batched_train_dataset, batched_val_dataset = load_data()
 
 
-images, masks = load_data()
-X_test = load_test_data()
-
-# Split the data
-X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=config.VALIDATION_SPLIT, random_state=42)
-
-X_train = tf.data.Dataset.from_tensor_slices(X_train)
-y_train = tf.data.Dataset.from_tensor_slices(y_train)
-
-X_val = tf.data.Dataset.from_tensor_slices(X_val)
-y_val = tf.data.Dataset.from_tensor_slices(y_val)
-
-X_test = tf.data.Dataset.from_tensor_slices(X_test)
-
-# Add labels to dataframe objects (one-hot-encoded)
-train_dataset = tf.data.Dataset.zip((X_train, y_train))
-val_dataset = tf.data.Dataset.zip((X_val, y_val))
-
-# Apply the batch size to the dataset
-batched_train_dataset = train_dataset.batch(config.BATCH_SIZE)
-batched_val_dataset = val_dataset.batch(config.BATCH_SIZE)
-batched_test_dataset = X_test.batch(config.BATCH_SIZE)
-
-# Adding autotune for pre-fetching
-AUTOTUNE = tf.data.experimental.AUTOTUNE
-batched_train_dataset = batched_train_dataset.prefetch(buffer_size=AUTOTUNE)
-batched_val_dataset = batched_val_dataset.prefetch(buffer_size=AUTOTUNE)
-batched_test_dataset = batched_test_dataset.prefetch(buffer_size=AUTOTUNE)
-
-#check data
-# View images and associated labels
-for images, masks in batched_train_dataset.take(1):
-    car_number = 0
-    plt.figure(figsize=(12, 4))
-    for image_slot in range(4):
-        ax = plt.subplot(2, 2, image_slot + 1)
-        if image_slot % 2 == 0:
-            plt.imshow((images[car_number])) 
-            class_name = 'Image'
-        else:
-            plt.imshow(masks[car_number], cmap = 'gray')
-            print(masks[car_number].numpy())
-            #plt.colorbar()
-            class_name = 'Mask'
-            car_number += 1            
-        plt.title(class_name)
-        plt.axis("off")
-    plt.show()
 
 
 

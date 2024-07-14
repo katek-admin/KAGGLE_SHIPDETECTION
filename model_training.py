@@ -1,7 +1,14 @@
 import tensorflow as tf
-import config
-import data
+from keras import optimizers
+import os
+
+import config, data, utils
 from unet_model import model
+
+
+
+model.compile(optimizer=optimizers.Adam(learning_rate=0.0001, epsilon=1e-06), loss=[utils.combined_loss], metrics=[utils.dice_coefficient])
+
 
 callbacks_list = [
     tf.keras.callbacks.EarlyStopping(
@@ -22,5 +29,5 @@ history = model.fit(
     validation_data = data.batched_val_dataset
     )
 
-model.save('unet_model.h5') 
+#model.save('unet_model.h5') 
 

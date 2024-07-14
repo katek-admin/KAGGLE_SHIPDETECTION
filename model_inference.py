@@ -1,38 +1,34 @@
-import matplotlib.pyplot as plt
-import numpy as np
+import tensorflow as tf
 import os
 
-from keras import models
+import data, config, utils
+from unet_model import model
 
-import data
-from unet_model_v3 import dice_coefficient, model
 
-#test_images = data.load_test_data()
+def show_predictions(model, dataset=None, num=1):
+    """
+    Displays the first image of each of the num batches
+    """
+    if not dataset:
+        data.load_test_data()
 
+    if isinstance(dataset.element_spec, tf.TensorSpec):
+        for image in dataset.take(num):
+            pred_mask = model.predict(image)
+            utils.display([image[0], utils.create_mask(pred_mask)])
+    else:
+        for image, mask in dataset.take(num):
+            pred_mask = model.predict(image)
+            utils.display([image[0], mask[0], utils.create_mask(pred_mask)])
+   
+        
 # Load the model from the saved file
-if os.path.exists('unet_model.h5'):
-    model = models.load_model('unet_model.h5')
+if os.path.exists(os.getcwd()+ config.model_file):
+    model = tf.keras.models.load_model(os.getcwd()+ config.model_file, custom_objects={'combined_loss': utils.combined_loss, 'dice_coefficient': utils.dice_coefficient})
+else:
+    model = model
 
-# Predict and visualize
-preds = model.predict(data.images)
-# Apply threshold to get binary mask
-binary_predictions = (preds > 0.5).astype(np.uint8)
+#dataset = data.load_test_data()
+dataset = data.batched_train_dataset
+show_predictions(model = model, dataset = dataset, num = 10)
 
-for i in range(10):
-    plt.figure(figsize=(12, 4))
-
-    plt.subplot(1, 3, 1)
-    plt.imshow(data.images[i])
-    plt.title("Input Image")
-
-    plt.subplot(1, 3, 2)
-    plt.imshow(data.masks[i], cmap='gray')
-    plt.title("True Mask")
-
-    plt.subplot(1, 3, 3)
-    plt.imshow(binary_predictions[i], cmap='gray')
-    plt.title("Predicted Mask")
-
-    print(dice_coefficient(data.masks[i], preds[i]))
-    #print(dice_coefficient(data.masks[i], binary_predictions[i]))
-    plt.show()
