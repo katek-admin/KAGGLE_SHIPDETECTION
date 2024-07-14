@@ -2,7 +2,7 @@ import tensorflow as tf
 import os
 
 import data, config, utils
-from unet_model import model
+from model_training import model
 
 
 def show_predictions(model, dataset=None, num=1):
@@ -22,11 +22,6 @@ def show_predictions(model, dataset=None, num=1):
             utils.display([image[0], mask[0], utils.create_mask(pred_mask)])
    
         
-# Load the model from the saved file
-if os.path.exists(os.getcwd()+ config.model_file):
-    model = tf.keras.models.load_model(os.getcwd()+ config.model_file, custom_objects={'combined_loss': utils.combined_loss, 'dice_coefficient': utils.dice_coefficient})
-else:
-    model = model
 
 #dataset = data.load_test_data()
 dataset = data.batched_train_dataset

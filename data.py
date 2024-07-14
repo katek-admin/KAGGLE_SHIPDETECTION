@@ -42,52 +42,55 @@ def load_and_preprocess_image(img_path, target_size=(config.TARGET_IMAGE_HEIGHT,
 
 # Common function to load both image and mask (set amount of images = config -> IMAGES_TOINCLUDE)
 def load_data():
-    images = []
-    masks = []
+    images_list = []
+    masks_list = []
+    images = np.array(images_list)
+    masks = np.array(masks_list)
 
     #if images have been already preproccessed, load the file
     if os.path.exists(images_file):
+        print('trained data is taken from saved file')
         images = np.load(images_file)
         
     #if masks have been already preproccessed, load the file
     if os.path.exists(masks_file):
-        masks = np.load(masks_file)
+        print('masks are taken from saved file')
+        masks  = np.load(masks_file)
 
     #if any of those files are empty, perform preprocessing
-    if len(images)==0 or len(masks)==0:
+    if images.size == 0 or masks.size == 0:
+        print('data preprocessing starting...')
 
         #adding masks in proportion as 80% with masks, 20% - empty masks
         masks_df = pd.read_csv(os.getcwd()+config.MASK_CSV_PATH)
         masks_df_notna=masks_df[masks_df['EncodedPixels'].notna()][:int(config.IMAGES_TOINCLUDE*0.8)]
         masks_df_na=masks_df[masks_df['EncodedPixels'].isna()][:int(config.IMAGES_TOINCLUDE*0.2)]
         combined_df = pd.concat([masks_df_notna, masks_df_na], ignore_index=True)
-        masks_df = combined_df.sample(frac=1).reset_index(drop=True)
+        masks_df = combined_df.sample(frac=1).reset_index(drop=False)
 
-        for index, row in masks_df.iterrows():
+        for _, row in masks_df.iterrows():
             img_file = os.path.join(config.TRAIN_IMAGES_PATH, row['ImageId'])
             if os.path.exists(img_file):
                 img = load_and_preprocess_image(img_file)
                 mask = preprocess_mask(row['EncodedPixels'])
-                images.append(img)
-                masks.append(mask)
+                images_list.append(img)
+                masks_list.append(mask)
 
         # Convert lists to numpy arrays
-        images = np.array(images)
-        masks = np.array(masks)
-
+        images = np.array(images_list)
+        masks = np.array(masks_list)
 
         np.save(images_file, images)
         np.save(masks_file, masks)
 
     # Split the data
-    X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=config.VALIDATION_SPLIT, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(images, masks, test_size=config.VALIDATION_SPLIT, random_state=config.RANDOM_STATE)
 
     X_train = tf.data.Dataset.from_tensor_slices(X_train)
     y_train = tf.data.Dataset.from_tensor_slices(y_train)
 
     X_val = tf.data.Dataset.from_tensor_slices(X_val)
     y_val = tf.data.Dataset.from_tensor_slices(y_val)
-
 
 
     # Add labels to dataframe objects (one-hot-encoded)
@@ -110,6 +113,7 @@ def load_test_data():
     test_images = []
 
     if os.path.exists(test_images_file):
+        print('test data is taken from saved file')
         test_images = np.load(images_file)
     
    
@@ -135,7 +139,9 @@ def load_test_data():
 
     return batched_test_dataset
 
+print('Data processing started...')
 batched_train_dataset, batched_val_dataset = load_data()
+
 
 
 
